@@ -149,7 +149,7 @@ coming soon...
 
 - 官方文档：https://doc.bmobapp.com/data/swift/
 - 官网：https://www.bmobapp.com
-- 邮箱：support@bmob.cn
+- 邮箱：magic@bmobcloud.com
 
 ---
 
