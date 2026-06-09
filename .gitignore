@@ -1,0 +1,32 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# CocoaPods
+Pods/
+
+# IDE / Editors
+.idea/
+.vscode/
+*.swp
+*.bak
+.DS_Store
+*~
+
+# Project specific
+docs/
+openspec/
+.codebuddy/
+
+# macOS
+Thumbs.db
+
+# Test artifacts
+TestResults/

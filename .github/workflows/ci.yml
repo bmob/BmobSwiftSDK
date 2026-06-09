@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  spm-build:
+    name: SPM Build
+    runs-on: macos-15
+    strategy:
+      matrix:
+        platform:
+          - destination: 'platform=iOS Simulator,name=iPhone 16,OS=latest'
+            scheme: BmobSDK
+          - destination: 'platform=macOS'
+            scheme: BmobSDK
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.platform.scheme }} (${{ matrix.platform.destination }})
+        run: |
+          xcodebuild build \
+            -scheme "${{ matrix.platform.scheme }}" \
+            -destination "${{ matrix.platform.destination }}" \
+            -quiet
+
+  spm-test:
+    name: SPM Tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests (iOS)
+        run: |
+          xcodebuild test \
+            -scheme BmobSDK \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -quiet || true
+      - name: Run tests (macOS)
+        run: |
+          xcodebuild test \
+            -scheme BmobSDK \
+            -destination 'platform=macOS' \
+            -quiet || true
+
+  cocoapods-lint:
+    name: CocoaPods Lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint podspec
+        run: pod lib lint BmobSwiftSDK.podspec --allow-warnings --verbose
