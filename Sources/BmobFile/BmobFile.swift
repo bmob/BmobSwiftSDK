@@ -1,6 +1,6 @@
 import Foundation
-import BmobCore
-import BmobData
+@_exported import BmobCore
+@_exported import BmobData
 
 // MARK: - BmobFile
 

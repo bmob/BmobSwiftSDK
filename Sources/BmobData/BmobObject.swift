@@ -1,5 +1,5 @@
 import Foundation
-import BmobCore
+@_exported import BmobCore
 
 // MARK: - BmobObject
 
