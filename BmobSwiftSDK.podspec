@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.homepage         = 'https://www.bmobapp.com'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Bmob' => 'support@bmob.cn' }
-  s.source           = { :git => 'https://github.com/bmob/BmobSwiftSDK.git', :tag => s.version.to_s }
+  s.source           = { :git => 'https://github.com/bmob/BmobSwiftSDK.git', :tag => "v#{s.version}" }
 
   s.swift_versions   = ['5.9']
   s.ios.deployment_target = '15.0'
