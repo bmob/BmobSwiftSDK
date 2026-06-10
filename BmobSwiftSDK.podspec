@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'BmobSwiftSDK'
-  s.version          = '1.0.1'
+  s.version          = '1.0.2'
   s.summary          = 'Bmob Swift SDK — 纯 Swift 实现的 Bmob 后端云 SDK，支持 iOS/macOS 双平台'
   s.description      = <<-DESC
     全新 Bmob Swift SDK，采用 async/await 并发模型，支持 SPM 和 CocoaPods 双通道集成。

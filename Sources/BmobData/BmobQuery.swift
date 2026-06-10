@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(BmobCore)
 @_exported import BmobCore
+#endif
 
 // MARK: - BmobQuery
 

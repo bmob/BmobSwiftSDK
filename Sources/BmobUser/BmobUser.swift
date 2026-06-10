@@ -1,6 +1,8 @@
 import Foundation
+#if canImport(BmobCore)
 @_exported import BmobCore
 @_exported import BmobData
+#endif
 
 // MARK: - BmobUser
 
