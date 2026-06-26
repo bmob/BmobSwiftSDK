@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-06-26
+
+### Fixed
+
+- 修复 `BmobSerializer.serializeValue()` 未处理 `BmobACL` 类型的问题
+- `BmobACL` 对象此前落入 `default` 分支，被 `String(describing:)` 转为 `"BmobData.BmobACL"` 字符串，导致服务端报 `[107] ACL should be like: {"*":{"read":true},...}`
+- `BmobACL.aclDictionary` 从 `internal` 改为 `public`
+- `BmobObject.save()`/`update()`/`delete()` 补齐 `sessionToken` 参数以支持 ACL 权限校验
+- 新增 3 个 `BmobACL` 序列化单元测试
+
 ## [1.0.4] - 2026-06-26
 
 ### Fixed
