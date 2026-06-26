@@ -74,4 +74,54 @@ final class BmobObjectTests: XCTestCase {
         XCTAssertNotNil(increment)
         XCTAssertEqual(increment?.amount, -2)
     }
+
+    // MARK: - BmobACL Serialization Tests
+
+    func testBmobACLSerialization_readWriteAccess() throws {
+        let acl = BmobACL()
+        acl.setReadWriteAccess(for: "abc123")
+
+        let result = try BmobSerializer.serializeValue(acl) as? [String: Any]
+        XCTAssertNotNil(result)
+
+        let userPerms = result?["abc123"] as? [String: Bool]
+        XCTAssertNotNil(userPerms)
+        XCTAssertEqual(userPerms?["read"], true)
+        XCTAssertEqual(userPerms?["write"], true)
+    }
+
+    func testBmobACLSerialization_publicReadAccess() throws {
+        let acl = BmobACL()
+        acl.setPublicReadAccess(true)
+        acl.setReadWriteAccess(for: "user1")
+
+        let result = try BmobSerializer.serializeValue(acl) as? [String: Any]
+        XCTAssertNotNil(result)
+
+        let publicPerms = result?["*"] as? [String: Bool]
+        XCTAssertNotNil(publicPerms)
+        XCTAssertEqual(publicPerms?["read"], true)
+
+        let userPerms = result?["user1"] as? [String: Bool]
+        XCTAssertNotNil(userPerms)
+        XCTAssertEqual(userPerms?["read"], true)
+        XCTAssertEqual(userPerms?["write"], true)
+    }
+
+    func testBmobACLSerialization_viaObjectData() throws {
+        let acl = BmobACL()
+        acl.setReadWriteAccess(for: "userIdX")
+
+        let obj = BmobObject(className: "Test")
+        obj["ACL"] = acl
+
+        let serialized = try BmobSerializer.serialize(obj.data)
+        let aclData = serialized["ACL"] as? [String: Any]
+        XCTAssertNotNil(aclData)
+
+        let perms = aclData?["userIdX"] as? [String: Bool]
+        XCTAssertNotNil(perms)
+        XCTAssertEqual(perms?["read"], true)
+        XCTAssertEqual(perms?["write"], true)
+    }
 }

@@ -105,10 +105,15 @@ open class BmobObject: @unchecked Sendable {
         try await waitForInitialization()
 
         let serialized = try BmobSerializer.serialize(_data)
-        let parameters: [String: Any] = [
+        var parameters: [String: Any] = [
             "c": className,
             "data": serialized
         ]
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            parameters["sessionToken"] = token
+        }
 
         let response = try await BmobHTTPClient.post(url: url, parameters: parameters)
 

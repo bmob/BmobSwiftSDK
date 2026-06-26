@@ -82,6 +82,8 @@ public enum BmobSerializer {
             return file.dictionary
         case let relation as BmobRelationData:
             return relation.dictionary
+        case let acl as BmobACL:
+            return acl.aclDictionary
         case let array as [Any]:
             return try array.map { try serializeValue($0) }
         case let dict as [String: Any]:

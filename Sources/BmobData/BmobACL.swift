@@ -94,7 +94,7 @@ public class BmobACL: @unchecked Sendable {
     // MARK: - Serialization
 
     /// 转换为后端 JSON 格式
-    var aclDictionary: [String: Any] {
+    public var aclDictionary: [String: Any] {
         var dict: [String: Any] = permissions
         if let asterisk = asteriskPermissions, !asterisk.isEmpty {
             dict["*"] = asterisk
