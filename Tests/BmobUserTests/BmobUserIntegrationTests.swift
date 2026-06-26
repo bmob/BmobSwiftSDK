@@ -289,7 +289,7 @@ final class BmobUserIntegrationTests: XCTestCase {
 
         // 验证持久化：signUp 后已自动保存到 UserDefaults
         // 不先 logout，直接 restoreCurrent 验证持久化数据
-        BmobUser.restoreCurrent()
+        await BmobUser.restoreCurrent()
         XCTAssertNotNil(BmobUser.current, "restoreCurrent 应恢复已持久化用户")
         XCTAssertEqual(BmobUser.current?.objectId, registered?.objectId)
 

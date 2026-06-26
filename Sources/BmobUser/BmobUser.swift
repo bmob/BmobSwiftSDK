@@ -110,7 +110,7 @@ open class BmobUser: BmobObject {
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
         try updateFromResponse(response)
 
-        BmobUser.saveCurrent(self)
+        await BmobUser.saveCurrent(self)
         return self
     }
 
@@ -136,7 +136,7 @@ open class BmobUser: BmobObject {
 
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
         let user = try userFromResponse(response)
-        saveCurrent(user)
+        await saveCurrent(user)
         return user
     }
 
@@ -160,7 +160,7 @@ open class BmobUser: BmobObject {
 
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
         let user = try userFromResponse(response)
-        saveCurrent(user)
+        await saveCurrent(user)
         return user
     }
 
@@ -184,7 +184,7 @@ open class BmobUser: BmobObject {
 
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
         let user = try userFromResponse(response)
-        saveCurrent(user)
+        await saveCurrent(user)
         return user
     }
 
@@ -208,7 +208,7 @@ open class BmobUser: BmobObject {
 
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
         let user = try userFromResponse(response)
-        saveCurrent(user)
+        await saveCurrent(user)
         return user
     }
 
@@ -334,7 +334,7 @@ open class BmobUser: BmobObject {
 
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
         let user = try userFromResponse(response)
-        saveCurrent(user)
+        await saveCurrent(user)
         return user
     }
 
@@ -432,7 +432,7 @@ open class BmobUser: BmobObject {
     // MARK: - Persistence
 
     /// 恢复当前用户（从本地缓存）
-    public static func restoreCurrent() {
+    public static func restoreCurrent() async {
         guard let data = UserDefaults.standard.data(forKey: currentUserKey),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return
@@ -440,15 +440,15 @@ open class BmobUser: BmobObject {
         let deserialized = BmobSerializer.deserialize(dict)
         let user = BmobUser(className: "_User", data: deserialized)
         current = user
-        Task { await BmobManager.shared.set(sessionToken: user.sessionToken) }
+        await BmobManager.shared.set(sessionToken: user.sessionToken)
     }
 
-    /// 保存当前用户到本地
-    private static func saveCurrent(_ user: BmobUser) {
+    /// 保存当前用户到本地（await 确保 sessionToken 在 saveCurrent 返回前已写入 BmobManager）
+    private static func saveCurrent(_ user: BmobUser) async {
         current = user
         let data = try? JSONSerialization.data(withJSONObject: user.fullData)
         UserDefaults.standard.set(data, forKey: currentUserKey)
-        Task { await BmobManager.shared.set(sessionToken: user.sessionToken) }
+        await BmobManager.shared.set(sessionToken: user.sessionToken)
     }
 
     // MARK: - Helpers

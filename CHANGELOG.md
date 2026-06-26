@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-06-26
+
+### Fixed
+
+- 修复 `saveCurrent()` 和 `restoreCurrent()` 中 `sessionToken` 写入 `BmobManager` 的竞态条件
+- 将 `saveCurrent()` 和 `restoreCurrent()` 改为 `async` 方法，使用 `await` 替代 `Task { }` 确保 sessionToken 在方法返回前已写入
+- 修复登录后立即发起查询时 sessionToken 为空的问题（`Task` 调度延迟导致 `buildRequestParams` 读到 nil）
+
 ## [1.0.3] - 2026-06-26
 
 ### Fixed
