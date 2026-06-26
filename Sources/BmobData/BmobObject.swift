@@ -148,11 +148,16 @@ open class BmobObject: @unchecked Sendable {
             updateData.removeValue(forKey: key)
         }
         let serialized = try BmobSerializer.serialize(updateData)
-        let parameters: [String: Any] = [
+        var parameters: [String: Any] = [
             "c": className,
             "objectId": objectId,
             "data": serialized
         ]
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            parameters["sessionToken"] = token
+        }
 
         let response = try await BmobHTTPClient.post(url: url, parameters: parameters)
 
@@ -176,10 +181,15 @@ open class BmobObject: @unchecked Sendable {
 
         try await waitForInitialization()
 
-        let parameters: [String: Any] = [
+        var parameters: [String: Any] = [
             "c": className,
             "objectId": objectId
         ]
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            parameters["sessionToken"] = token
+        }
 
         _ = try await BmobHTTPClient.post(url: url, parameters: parameters)
 

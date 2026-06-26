@@ -359,7 +359,7 @@ public class BmobQuery {
 
     /// 查询计数
     public func count() async throws -> Int {
-        var params = buildRequestParams()
+        var params = await buildRequestParams()
         params["count"] = 1
         params["limit"] = 0
 
@@ -408,11 +408,16 @@ public class BmobQuery {
 
         try await BmobManager.shared.waitUntilReady()
 
-        let parameters: [String: Any] = [
+        var parameters: [String: Any] = [
             "c": className,
             "objectId": objectId,
             "data": NSNull()
         ]
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            parameters["sessionToken"] = token
+        }
 
         let response: [String: Any]
         do {
@@ -443,7 +448,7 @@ public class BmobQuery {
 
         try await BmobManager.shared.waitUntilReady()
 
-        let parameters = buildRequestParams()
+        let parameters = await buildRequestParams()
         print("🔍 [BmobQuery.find] 请求参数: c=\(parameters["c"] ?? "nil"), limit=\(parameters["limit"] ?? "nil"), skip=\(parameters["skip"] ?? "nil"), data_in_params=\(parameters["data"] != nil ? "YES" : "NO")")
         if let data = parameters["data"] {
             print("🔍 [BmobQuery.find] data 内容: \(data)")
@@ -505,7 +510,7 @@ public class BmobQuery {
 
         try await BmobManager.shared.waitUntilReady()
 
-        let parameters = buildRequestParams()
+        let parameters = await buildRequestParams()
         let response = try await BmobHTTPClient.post(url: url, parameters: parameters)
 
         if let results = response["results"] as? [[String: Any]] {
@@ -526,6 +531,11 @@ public class BmobQuery {
         var params: [String: Any] = ["bql": bql]
         if let parameters = parameters {
             params["values"] = parameters
+        }
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            params["sessionToken"] = token
         }
 
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
@@ -567,6 +577,11 @@ public class BmobQuery {
             params["values"] = parameters
         }
 
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            params["sessionToken"] = token
+        }
+
         let response = try await BmobHTTPClient.post(url: url, parameters: params)
 
         if let results = response["results"] as? [[String: Any]] {
@@ -587,7 +602,7 @@ public class BmobQuery {
     /// 构建请求参数字典
     /// 参考旧版 ObjC SDK BmobQuery.m 中 makeQueryCondiction + requestDictionaryWithClassname:data:
     /// 格式: {"c": className, "data": {"where": ..., "limit": ..., "skip": ..., "order": ..., "keys": ..., "include": ...}, "client": ..., "v": ..., "appSign": ..., "timestamp": ...}
-    private func buildRequestParams() -> [String: Any] {
+    private func buildRequestParams() async -> [String: Any] {
         var dataDict: [String: Any] = [:]
 
         // 查询条件
@@ -640,6 +655,11 @@ public class BmobQuery {
             params["data"] = NSNull()
         } else {
             params["data"] = dataDict
+        }
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            params["sessionToken"] = token
         }
 
         return params

@@ -261,4 +261,8 @@ extension BmobManager {
     func set(isCDNEnabled: Bool) {
         UserDefaults.standard.set(isCDNEnabled, forKey: "BmobCDNEnabled")
     }
+
+    public func set(sessionToken: String?) {
+        self.sessionToken = sessionToken
+    }
 }

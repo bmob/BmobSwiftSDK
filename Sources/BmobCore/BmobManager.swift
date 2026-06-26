@@ -56,6 +56,9 @@ public actor BmobManager {
     /// 格式: ["action": ["enabled", "path"]]
     var migrationMap: [String: [Any]] = [:]
 
+    /// 当前用户的 sessionToken（用于 ACL 权限校验的请求）
+    public var sessionToken: String?
+
     // MARK: - Timeout
 
     /// 请求超时时间（秒）

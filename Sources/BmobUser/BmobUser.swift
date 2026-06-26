@@ -218,6 +218,7 @@ open class BmobUser: BmobObject {
     public static func logout() {
         current = nil
         UserDefaults.standard.removeObject(forKey: currentUserKey)
+        Task { await BmobManager.shared.set(sessionToken: nil) }
     }
 
     // MARK: - Password Management
@@ -226,6 +227,9 @@ open class BmobUser: BmobObject {
     open func updatePassword(oldPassword: String, newPassword: String) async throws {
         guard let objectId = objectId else {
             throw BmobError.invalidParameter(reason: "Not logged in")
+        }
+        guard let token = sessionToken else {
+            throw BmobError.authenticationFailed
         }
 
         let domain = await BmobManager.shared.apiDomain
@@ -241,7 +245,8 @@ open class BmobUser: BmobObject {
             "data": [
                 "oldPassword": oldPassword,
                 "newPassword": newPassword
-            ]
+            ],
+            "sessionToken": token
         ]
 
         _ = try await BmobHTTPClient.post(url: url, parameters: params)
@@ -338,7 +343,7 @@ open class BmobUser: BmobObject {
         guard let objectId = objectId else {
             throw BmobError.invalidParameter(reason: "Not logged in")
         }
-        guard let _ = sessionToken else {
+        guard let token = sessionToken else {
             throw BmobError.authenticationFailed
         }
 
@@ -354,7 +359,8 @@ open class BmobUser: BmobObject {
             "objectId": objectId,
             "data": [
                 "authData": [platform.rawValue: authData]
-            ]
+            ],
+            "sessionToken": token
         ]
 
         _ = try await BmobHTTPClient.post(url: url, parameters: params)
@@ -364,6 +370,9 @@ open class BmobUser: BmobObject {
     open func unlink(platform: ThirdPartyPlatform) async throws {
         guard let objectId = objectId else {
             throw BmobError.invalidParameter(reason: "Not logged in")
+        }
+        guard let token = sessionToken else {
+            throw BmobError.authenticationFailed
         }
 
         let domain = await BmobManager.shared.apiDomain
@@ -378,7 +387,8 @@ open class BmobUser: BmobObject {
             "objectId": objectId,
             "data": [
                 "authData": [platform.rawValue: NSNull()]
-            ]
+            ],
+            "sessionToken": token
         ]
 
         _ = try await BmobHTTPClient.post(url: url, parameters: params)
@@ -428,7 +438,9 @@ open class BmobUser: BmobObject {
             return
         }
         let deserialized = BmobSerializer.deserialize(dict)
-        current = BmobUser(className: "_User", data: deserialized)
+        let user = BmobUser(className: "_User", data: deserialized)
+        current = user
+        Task { await BmobManager.shared.set(sessionToken: user.sessionToken) }
     }
 
     /// 保存当前用户到本地
@@ -436,6 +448,7 @@ open class BmobUser: BmobObject {
         current = user
         let data = try? JSONSerialization.data(withJSONObject: user.fullData)
         UserDefaults.standard.set(data, forKey: currentUserKey)
+        Task { await BmobManager.shared.set(sessionToken: user.sessionToken) }
     }
 
     // MARK: - Helpers

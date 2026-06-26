@@ -110,7 +110,12 @@ public class BmobBatch {
             requests.append(request)
         }
 
-        let parameters: [String: Any] = ["requests": requests]
+        var parameters: [String: Any] = ["requests": requests]
+
+        // 传递 sessionToken 以支持 ACL 权限校验
+        if let token = await BmobManager.shared.sessionToken {
+            parameters["sessionToken"] = token
+        }
 
         let response = try await BmobHTTPClient.post(url: url, parameters: parameters)
 

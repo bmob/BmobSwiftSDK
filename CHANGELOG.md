@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-06-26
+
+### Fixed
+
+- 修复 `/8/find` 查询协议不传递 `sessionToken` 的问题，导致 ACL 保护的数据被过滤
+- `BmobQuery`、`BmobObject`、`BmobBatch` 的请求参数补齐 `sessionToken`
+- 在 `BmobManager` 中添加 `sessionToken` 公共属性作为跨模块身份缓存
+
 ## [1.0.1] - 2024-06-09
 
 ### Fixed
