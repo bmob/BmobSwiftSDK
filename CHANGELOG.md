@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-09-07
+
+### Fixed
+
+- 修复文件上传：由错误的明文 `POST /8/cdn` multipart，改为与加密客户端一致的 `POST /8/files`（请求体 `{加密JSON}&&{文件Base64}`）
+- 修复文件删除：改为 `POST /8/delcdnupload`，按 CDN 路径 + `cdn` 标识删除
+- `BmobFile` 增加 `cdn` 属性；`init?(url:cdn:)` 支持重建已上传文件以便删除
+- `BmobHTTPClient.uploadFile` 统一上传鉴权与进度回调
+- 空文件在本地拒绝上传（`invalidParameter`）
+
+### Changed
+
+- 云函数文档注明服务端会将参数值统一转为字符串（已知后端行为）
+
 ## [1.0.5] - 2026-06-26
 
 ### Fixed

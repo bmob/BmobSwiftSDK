@@ -70,7 +70,7 @@ public enum BmobHTTPClient {
 
             // 生成 Accept-Id
             let appKey = await manager.appKey
-            acceptId = try BmobRequestHelper.acceptId(appKey: appKey)
+            acceptId = try BmobRequestHelper.acceptId(appKey: appKey, userAgent: ua)
         }
 
         // 构造请求
@@ -180,7 +180,154 @@ public enum BmobHTTPClient {
         return try parseResponse(data: decryptedData, statusCode: httpResponse.statusCode)
     }
 
+    /// 上传文件（`/8/files` / `/8/mkfile` / `/8/bput`）
+    ///
+    /// 请求体格式与 API `BeforeServe` 约定一致：`{加密JSON}&&{文件Base64}`
+    /// 鉴权与普通接口相同：`User-Agent` + `Accept-Id`，JSON 部分用 SecretKey 加密。
+    /// - Parameters:
+    ///   - url: 请求 URL（如 `{domain}/8/files`）
+    ///   - parameters: 明文业务参数（会自动附加 client / v / appSign / timestamp）
+    ///   - fileData: 原始文件字节
+    ///   - progress: 上传进度（0.0 ~ 1.0）
+    public static func uploadFile(
+        url: URL,
+        parameters: [String: Any],
+        fileData: Data,
+        progress: ((Double) -> Void)? = nil
+    ) async throws -> [String: Any] {
+        let manager = BmobManager.shared
+
+        var requestParams = parameters
+        requestParams["client"] = BmobRequestHelper.clientInfo()
+        requestParams["v"] = "v2.4.1"
+        requestParams["appSign"] = BmobRequestHelper.appSign()
+
+        let clientTime = Int(Date().timeIntervalSince1970)
+        let timeOffset = await manager.timeOffset
+        requestParams["timestamp"] = clientTime + timeOffset
+
+        let jsonData: Data
+        do {
+            jsonData = try JSONSerialization.data(withJSONObject: requestParams, options: [])
+        } catch {
+            throw BmobError.jsonParsingFailed
+        }
+
+        if Bmob.isDebugEnabled {
+            if let jsonStr = String(data: jsonData, encoding: .utf8) {
+                let maxLen = min(jsonStr.count, 500)
+                print("📤 [HTTP] UPLOAD \(url.lastPathComponent): \(String(jsonStr.prefix(maxLen)))\(jsonStr.count > maxLen ? "..." : "")")
+            }
+        }
+
+        guard let sk = await manager.secretKey else {
+            throw BmobError.notInitialized
+        }
+
+        let ua = BmobRequestHelper.userAgent()
+        let encrypted = try BmobCrypto.aesEncrypt(data: jsonData, key: sk, iv: sk)
+        let encryptedBody = BmobCrypto.base64EncodeData(encrypted)
+        let fileBase64 = fileData.base64EncodedString()
+        let bodyString = "\(encryptedBody)&&\(fileBase64)"
+
+        let appKey = await manager.appKey
+        let acceptId = try BmobRequestHelper.acceptId(appKey: appKey, userAgent: ua)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = bodyString.data(using: .utf8)
+        request.setValue("text/html;charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue(ua, forHTTPHeaderField: "User-Agent")
+        request.setValue(acceptId, forHTTPHeaderField: "Accept-Id")
+
+        let timeout = await manager.timeout
+        request.timeoutInterval = timeout
+
+        if Bmob.isDebugEnabled {
+            print("🌐 [HTTP] URL: \(url.absoluteString)")
+            print("🌐 [HTTP] fileBytes=\(fileData.count), bodyLen=\(bodyString.count)")
+        }
+
+        let (data, response): (Data, URLResponse)
+        do {
+            let config = URLSessionConfiguration.default
+            config.httpAdditionalHeaders = ["Accept-Encoding": "identity"]
+            let delegate = ProgressDelegate(progress: progress)
+            let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+            defer { session.finishTasksAndInvalidate() }
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError where error.code == .timedOut {
+            throw BmobError.timeout
+        } catch {
+            throw BmobError.networkError(underlying: error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BmobError.networkError(underlying: NSError(domain: "", code: -1))
+        }
+
+        if Bmob.isDebugEnabled {
+            print("📥 [HTTP] \(url.lastPathComponent) statusCode=\(httpResponse.statusCode) data.count=\(data.count)")
+            if let bodyStr = String(data: data, encoding: .utf8) {
+                print("📥 [HTTP] body utf8: \(String(bodyStr.prefix(500)))")
+            }
+        }
+
+        if let plaintextError = try? parsePlaintextError(data: data, statusCode: httpResponse.statusCode) {
+            throw plaintextError
+        }
+
+        return try decryptResponse(data: data, statusCode: httpResponse.statusCode, secretKey: sk, userAgent: ua)
+    }
+
     // MARK: - Private
+
+    /// 解析未加密的错误响应（如路由 404 的 `{"data":null,"error":"Not Found"}`）
+    private static func parsePlaintextError(data: Data, statusCode: Int) throws -> BmobError? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        if let error = json["error"] as? String {
+            let code = (json["code"] as? Int) ?? statusCode
+            return .serverError(code: code, message: error)
+        }
+
+        if statusCode == 404 {
+            return .serverError(code: 404, message: "Not Found")
+        }
+
+        return nil
+    }
+
+    /// 用 SecretKey 解密；失败时回退到错误密钥 UA[1:17]
+    private static func decryptResponse(
+        data: Data,
+        statusCode: Int,
+        secretKey: Data,
+        userAgent ua: String
+    ) throws -> [String: Any] {
+        guard let dataString = String(data: data, encoding: .utf8),
+              let decoded = BmobCrypto.base64Decode(dataString) else {
+            throw BmobError.decryptionFailed
+        }
+
+        do {
+            let decryptedData = try BmobCrypto.aesDecrypt(data: decoded, key: secretKey, iv: secretKey)
+            return try parseResponse(data: decryptedData, statusCode: statusCode)
+        } catch {
+            guard let uaData = ua.data(using: .utf8), uaData.count >= 17 else {
+                throw BmobError.decryptionFailed
+            }
+            let errorKey = uaData.subdata(in: 1..<17)
+            do {
+                let decryptedData = try BmobCrypto.aesDecrypt(data: decoded, key: errorKey, iv: errorKey)
+                return try parseResponse(data: decryptedData, statusCode: statusCode)
+            } catch {
+                throw BmobError.decryptionFailed
+            }
+        }
+    }
 
     private static func parseResponse(data: Data, statusCode: Int) throws -> [String: Any] {
         let json: Any
@@ -215,5 +362,26 @@ public enum BmobHTTPClient {
         }
 
         return dict
+    }
+}
+
+// MARK: - ProgressDelegate
+
+private final class ProgressDelegate: NSObject, URLSessionTaskDelegate {
+    let progress: ((Double) -> Void)?
+
+    init(progress: ((Double) -> Void)?) {
+        self.progress = progress
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        progress?(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
 }

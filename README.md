@@ -3,7 +3,7 @@
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2015%2B%20%7C%20macOS%2012%2B-blue.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CocoaPods](https://img.shields.io/badge/CocoaPods-v1.0.0-red.svg)](https://cocoapods.org/pods/BmobSwiftSDK)
+[![CocoaPods](https://img.shields.io/badge/CocoaPods-v1.0.6-red.svg)](https://cocoapods.org/pods/BmobSwiftSDK)
 
 BmobSwiftSDK 是 Bmob 后端云的全新纯 Swift SDK，专为 Swift 现代并发模型设计，提供简洁、高效的云端数据管理能力。
 
@@ -38,7 +38,7 @@ https://github.com/bmob/BmobSwiftSDK
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/bmob/BmobSwiftSDK", from: "1.0.0")
+    .package(url: "https://github.com/bmob/BmobSwiftSDK", from: "1.0.6")
 ]
 ```
 
@@ -47,7 +47,7 @@ dependencies: [
 在 `Podfile` 中添加：
 
 ```ruby
-pod 'BmobSwiftSDK', '~> 1.0.0'
+pod 'BmobSwiftSDK', '~> 1.0.6'
 ```
 
 然后执行：
@@ -107,9 +107,10 @@ BmobUser.logout()
 ### 4. 文件上传
 
 ```swift
-let file = BmobFile(localPath: "/path/to/image.jpg")
-try await file.upload()
-print("File URL: \(file.url ?? "")")
+let file = BmobFile(filePath: "/path/to/image.jpg")
+try await file?.upload()
+print("File URL: \(file?.url ?? "")")
+print("CDN: \(file?.cdn ?? "")")
 ```
 
 ### 5. 云函数

@@ -36,8 +36,9 @@ enum BmobRequestHelper {
     /// 生成 Accept-Id 请求头
     /// Key = IV = UserAgent[1:17]（第2到第18字节，即 index 1..<17）
     /// 对 AppKey 原文进行 AES 加密后 Base64 编码
-    static func acceptId(appKey: String) throws -> String {
-        let ua = userAgent()
+    /// - Parameter userAgent: 必须与同一次请求的 `User-Agent` 头一致
+    static func acceptId(appKey: String, userAgent ua: String? = nil) throws -> String {
+        let ua = ua ?? userAgent()
         guard let uaData = ua.data(using: .utf8) else {
             throw BmobError.encryptionFailed
         }

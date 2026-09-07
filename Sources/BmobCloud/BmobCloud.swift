@@ -7,6 +7,12 @@ import Foundation
 
 /// Bmob 云函数调用
 ///
+/// > **已知行为**：Bmob 服务端会将云函数参数的所有值转为字符串后再传入 `request.body`，
+/// > 因此云函数中 `typeof(param)` 始终为 `"string"`。Int/Bool/Array/Dict 等类型均会被
+/// > 序列化为字符串形式（如 `42`→`"42"`、`true`→`"true"`、`[1,2,3]`→`"[1,2,3]"`）。
+/// > 这是 Bmob 后端的设计行为，非 SDK bug。如需在云函数中使用特定类型，请在云函数内
+/// > 手动解析（如 `parseInt(request.body.name)`）。
+///
 /// ```swift
 /// // 无参数调用
 /// let result = try await BmobCloud.run(function: "hello")

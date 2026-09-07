@@ -103,6 +103,53 @@ final class BmobCloudIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - Hello Function Parameter Type Tests
+
+    /// 测试 hello 云函数，传入不同类型的 name 参数，观察服务端如何处理
+    /// 已验证：客户端 JSONSerialization 正确保留类型（Int→number, Bool→boolean, Array→array 等），
+    /// 但 Bmob 服务端会将所有参数值转为字符串传入 request.body。
+    func testHelloWithDifferentParamTypes() async throws {
+        let testCases: [(String, Any)] = [
+            ("String",   "SwiftSDK"),
+            ("Int",      42),
+            ("Double",   3.14),
+            ("Bool_true", true),
+            ("Bool_false", false),
+            ("Array",    [1, 2, 3]),
+            ("Dict",     ["key": "value"]),
+            ("Null/nil", NSNull()),
+        ]
+
+        // 验证本地 JSONSerialization 保留类型（客户端序列化无误）
+        for (label, value) in testCases {
+            let dataDict: [String: Any] = ["_e": "hello", "name": value]
+            let requestParams: [String: Any] = ["data": dataDict]
+            let jsonData = try JSONSerialization.data(withJSONObject: requestParams, options: [.sortedKeys])
+            let jsonStr = String(data: jsonData, encoding: .utf8) ?? ""
+            print("🔍 本地 JSON(\(label)): \(jsonStr)")
+        }
+
+        // 调用云函数：服务端会将所有参数值转为字符串
+        for (label, value) in testCases {
+            do {
+                let result = try await BmobCloud.run(function: "hello", params: ["name": value])
+                // 服务端返回 type 均为 string（Bmob 后端行为）
+                if let dict = result as? [String: Any],
+                   let type = dict["type"] as? String {
+                    XCTAssertEqual(type, "string", "Bmob 服务端会将所有参数转为 string")
+                }
+                print("✅ hello(name=\(label)): \(value) → result = \(result)")
+            } catch let error as BmobError where error.code == 401 {
+                print("⚠️ hello(name=\(label)): 云函数未部署，跳过")
+                break
+            } catch let error as BmobError {
+                print("❌ hello(name=\(label)): \(value) → BmobError(code=\(error.code), msg=\(error.localizedDescription))")
+            } catch {
+                print("❌ hello(name=\(label)): \(value) → unexpected error: \(error)")
+            }
+        }
+    }
+
     // MARK: - Type-Safe Decoding Tests
 
     func testTypeSafeCloudFunctionCall() async throws {

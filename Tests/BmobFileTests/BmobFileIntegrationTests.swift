@@ -1,4 +1,7 @@
 import XCTest
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 @testable import BmobFile
 @testable import BmobCore
 
@@ -57,17 +60,22 @@ final class BmobFileIntegrationTests: XCTestCase {
     }
 
     func testUploadImageFile() async throws {
-        // 生成一个 1x1 PNG 图片（最小有效 PNG）
+        // 生成 64x64 彩色渐变 PNG
         let pngData = generateTestPNG()
-        let file = BmobFile(data: pngData, filename: "test_image_\(Int(Date().timeIntervalSince1970)).png")
+        XCTAssertFalse(pngData.isEmpty, "彩色测试图应生成成功")
+        let name = "test_color_image_\(Int(Date().timeIntervalSince1970)).png"
+        let file = BmobFile(data: pngData, filename: name)
 
         do {
             let uploaded = try await file.upload()
             XCTAssertNotNil(uploaded.url)
             XCTAssertEqual(uploaded.mimeType, "image/png")
 
-            // 清理
-            try? await uploaded.delete()
+            // 保留文件便于在控制台核对；需要清理时取消下面注释
+            print("✅ 彩色图片已上传 filename=\(name) bytes=\(pngData.count)")
+            print("✅ url=\(uploaded.url ?? "")")
+            print("✅ cdn=\(uploaded.cdn ?? "")")
+            // try? await uploaded.delete()
         } catch let error as BmobError {
             XCTFail("图片上传失败: \(error.localizedDescription)")
         }
@@ -84,6 +92,7 @@ final class BmobFileIntegrationTests: XCTestCase {
 
         var progressValues: [Double] = []
         let progressExpectation = expectation(description: "Progress reported")
+        progressExpectation.assertForOverFulfill = false
 
         do {
             let uploaded = try await file.upload { progress in
@@ -110,16 +119,18 @@ final class BmobFileIntegrationTests: XCTestCase {
         let file = BmobFile(data: Data(), filename: "empty_test.txt")
 
         do {
-            let uploaded = try await file.upload()
-            XCTAssertNotNil(uploaded.url)
-
-            // 清理
-            try? await uploaded.delete()
-        } catch let error as BmobError where error.code == 9008 {
-            // 空文件上传可能被拒绝，这是合理行为
-            XCTAssertTrue(true)
+            _ = try await file.upload()
+            XCTFail("空文件不应上传成功")
         } catch let error as BmobError {
-            XCTFail("空文件上传异常: \(error.localizedDescription)")
+            // SDK 本地拒绝空文件，或服务端返回 file 相关错误
+            switch error {
+            case .invalidParameter:
+                XCTAssertTrue(true)
+            case .serverError:
+                XCTAssertTrue(true)
+            default:
+                XCTFail("空文件上传异常: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -194,20 +205,63 @@ final class BmobFileIntegrationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// 生成最小有效 PNG（1x1 灰色像素）
+    /// 生成 64x64 彩色渐变 PNG（红→黄→绿→青→蓝→品红）
     private func generateTestPNG() -> Data {
-        // 1x1 灰色 PNG（最小有效 PNG 文件）
-        let pngBytes: [UInt8] = [
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
-            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, // 8-bit RGB
-            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
-            0x54, 0x08, 0xD7, 0x63, 0x60, 0x60, 0x60, 0x00, // data
-            0x00, 0x00, 0x04, 0x00, 0x01, 0x27, 0x34, 0x0A, // CRC
-            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND
-            0xAE, 0x42, 0x60, 0x82
-        ]
-        return Data(pngBytes)
+        let width = 64
+        let height = 64
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return Data()
+        }
+
+        for x in 0..<width {
+            let hue = CGFloat(x) / CGFloat(width)
+            let (r, g, b) = hsvToRGB(h: hue, s: 1.0, v: 1.0)
+            context.setFillColor(red: r, green: g, blue: b, alpha: 1.0)
+            context.fill(CGRect(x: x, y: 0, width: 1, height: height))
+        }
+
+        // 中间画一条白色横带，便于肉眼确认上传图不是纯色块
+        context.setFillColor(red: 1, green: 1, blue: 1, alpha: 0.85)
+        context.fill(CGRect(x: 0, y: height / 2 - 4, width: width, height: 8))
+
+        guard let cgImage = context.makeImage() else { return Data() }
+
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data as CFMutableData,
+            UTType.png.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return Data()
+        }
+        CGImageDestinationAddImage(destination, cgImage, nil)
+        guard CGImageDestinationFinalize(destination) else { return Data() }
+        return data as Data
+    }
+
+    private func hsvToRGB(h: CGFloat, s: CGFloat, v: CGFloat) -> (CGFloat, CGFloat, CGFloat) {
+        let i = Int(h * 6)
+        let f = h * 6 - CGFloat(i)
+        let p = v * (1 - s)
+        let q = v * (1 - f * s)
+        let t = v * (1 - (1 - f) * s)
+        switch i % 6 {
+        case 0: return (v, t, p)
+        case 1: return (q, v, p)
+        case 2: return (p, v, t)
+        case 3: return (p, q, v)
+        case 4: return (t, p, v)
+        default: return (v, p, q)
+        }
     }
 }

@@ -27,6 +27,9 @@ public class BmobFile {
     /// 文件 URL（上传后赋值）
     public internal(set) var url: String?
 
+    /// CDN 标识（上传后赋值，删除时使用）
+    public internal(set) var cdn: String?
+
     /// MIME 类型
     public var mimeType: String?
 
@@ -47,62 +50,61 @@ public class BmobFile {
     }
 
     /// 通过 URL 字符串创建（用于已上传文件）
-    public init?(url: String) {
+    public init?(url: String, cdn: String? = nil) {
         guard let fileURL = URL(string: url) else { return nil }
         self.data = Data()
         self.filename = fileURL.lastPathComponent
         self.url = url
+        self.cdn = cdn
         self.mimeType = BmobFile.mimeTypeFor(filename: filename)
     }
 
     // MARK: - Upload
 
-    /// 上传文件
+    /// 上传文件（`POST /8/files`）
+    ///
+    /// 鉴权与其他 `/8/*` 接口一致；请求体为 `{加密JSON}&&{文件Base64}`。
     /// - Parameter progress: 进度回调（0.0 ~ 1.0）
     @discardableResult
     public func upload(progress: ((Double) -> Void)? = nil) async throws -> BmobFile {
+        if data.isEmpty {
+            throw BmobError.invalidParameter(reason: "File data is empty")
+        }
+
         let domain = await BmobManager.shared.apiDomain
-        guard let url = URL(string: "\(domain)/8/cdn") else {
+        guard let url = URL(string: "\(domain)/8/files") else {
             throw BmobError.notInitialized
         }
 
         try await BmobManager.shared.waitUntilReady()
 
-        // 构造 multipart 上传
-        let boundary = "Boundary-\(UUID().uuidString)"
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let parameters: [String: Any] = [
+            "c": "File",
+            "data": [
+                "filename": filename
+            ]
+        ]
 
-        let body = buildMultipartBody(boundary: boundary)
-        request.httpBody = body
+        let response = try await BmobHTTPClient.uploadFile(
+            url: url,
+            parameters: parameters,
+            fileData: data,
+            progress: progress
+        )
 
-        // 使用 URLSession 的 delegate 模式获取进度
-        let delegate = ProgressDelegate(progress: progress)
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        let (responseData, response): (Data, URLResponse)
-        do {
-            (responseData, response) = try await session.data(for: request)
-        } catch let error as URLError where error.code == .timedOut {
-            throw BmobError.timeout
-        } catch {
-            throw BmobError.networkError(underlying: error)
+        guard let responseData = response["data"] as? [String: Any] else {
+            throw BmobError.serverError(code: -1, message: "Invalid upload response")
         }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw BmobError.serverError(code: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                                         message: "Upload failed")
-        }
-
-        let json = try JSONSerialization.jsonObject(with: responseData)
-        guard let dict = json as? [String: Any],
-              let fileUrl = dict["url"] as? String ?? dict["cdn"] as? String else {
+        guard let fileUrl = responseData["url"] as? String, !fileUrl.isEmpty else {
             throw BmobError.jsonParsingFailed
         }
 
         self.url = fileUrl
+        if let cdn = responseData["cdn"] as? String {
+            self.cdn = cdn
+        }
+
         return self
     }
 
@@ -123,26 +125,34 @@ public class BmobFile {
 
     // MARK: - Delete
 
-    /// 删除文件
+    /// 删除文件（`POST /8/delcdnupload`）
+    ///
+    /// `/8/files` 转发到 restful `/2/files`，删除对应使用 `/8/delcdnupload`。
     public func delete() async throws {
         guard let fileURL = url else {
             throw BmobError.invalidParameter(reason: "File URL is nil")
         }
 
         let domain = await BmobManager.shared.apiDomain
-        guard let url = URL(string: "\(domain)/8/cdn") else {
+        guard let requestURL = URL(string: "\(domain)/8/delcdnupload") else {
             throw BmobError.notInitialized
         }
 
         try await BmobManager.shared.waitUntilReady()
 
+        let path = BmobFile.cdnPath(from: fileURL)
+        let cdnName = cdn ?? "upyun"
+
         let params: [String: Any] = [
-            "url": fileURL,
-            "action": "delete"
+            "data": [
+                "filename": path,
+                "cdn": cdnName
+            ]
         ]
 
-        _ = try await BmobHTTPClient.post(url: url, parameters: params)
+        _ = try await BmobHTTPClient.post(url: requestURL, parameters: params)
         self.url = nil
+        self.cdn = nil
     }
 
     /// 批量删除
@@ -169,27 +179,26 @@ public class BmobFile {
 
     // MARK: - Private Helpers
 
-    private func buildMultipartBody(boundary: String) -> Data {
-        var body = Data()
+    /// 从完整 CDN URL 提取删除所需路径（去掉 scheme + host）
+    static func cdnPath(from fileURL: String) -> String {
+        guard let parsed = URL(string: fileURL),
+              let host = parsed.host else {
+            return fileURL.hasPrefix("/") ? fileURL : "/\(fileURL)"
+        }
 
-        let lineBreak = "\r\n"
-        let boundaryPrefix = "--\(boundary)\(lineBreak)"
+        var path = fileURL
+        for scheme in ["https://", "http://"] {
+            let prefix = "\(scheme)\(host)"
+            if let range = path.range(of: prefix) {
+                path = String(path[range.upperBound...])
+                break
+            }
+        }
 
-        // file 字段
-        if let boundaryData = boundaryPrefix.data(using: .utf8) { body.append(boundaryData) }
-        let disposition = "Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\(lineBreak)"
-        if let disData = disposition.data(using: .utf8) { body.append(disData) }
-        let contentType = "Content-Type: \(mimeType ?? "application/octet-stream")\(lineBreak)\(lineBreak)"
-        if let ctData = contentType.data(using: .utf8) { body.append(ctData) }
-
-        body.append(data)
-        if let lbData = lineBreak.data(using: .utf8) { body.append(lbData) }
-
-        // 结束边界
-        let endBoundary = "--\(boundary)--\(lineBreak)"
-        if let endData = endBoundary.data(using: .utf8) { body.append(endData) }
-
-        return body
+        if path.isEmpty {
+            return "/"
+        }
+        return path.hasPrefix("/") ? path : "/\(path)"
     }
 
     /// 根据文件名推断 MIME 类型
@@ -209,21 +218,5 @@ public class BmobFile {
         case "zip": return "application/zip"
         default: return "application/octet-stream"
         }
-    }
-}
-
-// MARK: - ProgressDelegate
-
-private final class ProgressDelegate: NSObject, URLSessionTaskDelegate {
-    let progress: ((Double) -> Void)?
-
-    init(progress: ((Double) -> Void)?) {
-        self.progress = progress
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-        guard totalBytesExpectedToSend > 0 else { return }
-        let fraction = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
-        progress?(fraction)
     }
 }
