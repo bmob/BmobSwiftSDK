@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2026-10-21
+
+### Fixed
+
+- 实时监听改用与旧版 Objective-C SDK 一致的 Socket.IO 0.9 握手、心跳及 `client_sub` / `client_unsub` 协议
+- 从初始化状态读取实时服务地址和 AppKey，收到连接包后才报告连接成功，服务端就绪后发送订阅
+- 取消监听向服务端发送退订；断线自动重连并恢复仍有效的订阅，主动停止取消重连
+- 修复 AsyncStream 桥接对象被弱引用释放的问题，支持多个事件流与代理同时接收事件
+
+### Added
+
+- `Bmob.resetIODomain(_:)` 支持用户重置实时监听域名，优先于服务端配置，传 nil 恢复自动选择
+- `BmobActionType` 支持表更新、表删除、行更新、行删除；保留现有默认更新监听 API
+- `bmobEventCanStartListen` 就绪回调、`start` / `stop` 别名及 `BmobEvent.shared`
+- 实时协议和连接生命周期回归测试
+
 ## [1.0.6] - 2026-09-07
 
 ### Fixed

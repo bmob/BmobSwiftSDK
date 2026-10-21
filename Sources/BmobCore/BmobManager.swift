@@ -49,6 +49,9 @@ public actor BmobManager {
     /// Socket.IO 域名
     var ioDomain: String?
 
+    /// 用户指定的实时服务地址，不被初始化接口返回值覆盖。
+    var ioDomainOverride: String?
+
     /// 推送服务器域名
     var pushDomain: String?
 
@@ -86,6 +89,7 @@ public actor BmobManager {
         apiDomain = BmobManager.defaultDomain
         fileDomain = nil
         ioDomain = nil
+        ioDomainOverride = nil
         pushDomain = nil
         migrationMap = [:]
         pendingContinuations.removeAll()
@@ -94,6 +98,16 @@ public actor BmobManager {
     /// 设置域名
     func setDomain(_ domain: String) {
         apiDomain = domain
+    }
+
+    func setIODomainOverride(_ domain: String?) throws {
+        if let domain {
+            let trimmed = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = try BmobEventWire.handshakeURL(trimmed)
+            ioDomainOverride = trimmed
+        } else {
+            ioDomainOverride = nil
+        }
     }
 
     // MARK: - Init Flow

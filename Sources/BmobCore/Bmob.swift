@@ -63,6 +63,14 @@ public final class Bmob {
         }
     }
 
+    /// 重置实时数据监听域名，优先于初始化接口返回的 io 地址。
+    /// - Parameter domain: http(s) / ws(s) 地址或 host:port；nil 恢复服务端配置或默认地址。
+    /// 可在初始化前后调用；已建立的连接需 disconnect / connect，或等待自动重连后生效。
+    /// 使用 await 保证配置完成后再建立连接。
+    public static func resetIODomain(_ domain: String?) async throws {
+        try await BmobManager.shared.setIODomainOverride(domain)
+    }
+
     /// 设置请求超时时间
     /// - Parameter timeout: 秒（默认 30）
     public static func setTimeout(_ timeout: TimeInterval) {
