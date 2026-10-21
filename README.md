@@ -3,7 +3,7 @@
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2015%2B%20%7C%20macOS%2012%2B-blue.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CocoaPods](https://img.shields.io/badge/CocoaPods-v1.0.7-red.svg)](https://cocoapods.org/pods/BmobSwiftSDK)
+[![CocoaPods](https://img.shields.io/badge/CocoaPods-v1.0.8-red.svg)](https://cocoapods.org/pods/BmobSwiftSDK)
 
 BmobSwiftSDK 是 Bmob 后端云的全新纯 Swift SDK，专为 Swift 现代并发模型设计，提供简洁、高效的云端数据管理能力。
 
@@ -38,7 +38,7 @@ https://github.com/bmob/BmobSwiftSDK
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/bmob/BmobSwiftSDK", from: "1.0.7")
+    .package(url: "https://github.com/bmob/BmobSwiftSDK", from: "1.0.8")
 ]
 ```
 
@@ -47,7 +47,7 @@ dependencies: [
 在 `Podfile` 中添加：
 
 ```ruby
-pod 'BmobSwiftSDK', '~> 1.0.7'
+pod 'BmobSwiftSDK', '~> 1.0.8'
 ```
 
 然后执行：
@@ -128,6 +128,10 @@ let response: HelloResponse = try await BmobCloud.run(function: "helloWorld")
 
 ## 实时数据监听
 
+连接分两步：先通过 HTTP/HTTPS 请求 `/socket.io/1/?t=...` 获取 SID，
+再连接 `ws://` / `wss://` 的 `/socket.io/1/websocket/<sid>`。
+协议自动对应 HTTP → WS、HTTPS → WSS；SDK 在 WebSocket 握手中附带同源 `Origin`，兼容旧版实时服务。
+
 监听地址优先级：用户自定义地址 → 初始化响应的 `io` → `http://io.codenow.cn:3010`。
 可在初始化前后设置；请用 `await` 保证设置完成后再连接：
 
@@ -166,6 +170,20 @@ for await message in messages {
 默认断线后每 5 秒重连并恢复有效订阅；可设置 `autoReconnect = false`。
 `event.disconnect()` 停止连接和重连并结束所有事件流，保留订阅供下次连接使用。
 重连期间事件流保持开启，但不会补发断线期间的变更；需要完整数据时请重新查询。
+
+### 线上 Chat 监听测试
+
+`Tests/BmobCoreTests/BmobEventChatIntegrationTests.swift` 可验证初始化 → 订阅 `Chat.updateTable` → REST 新增记录 → 接收并核对事件的完整流程。
+测试只创建一条带唯一标记的记录，并在结束时删除该记录。默认跳过，显式开启后运行：
+
+```bash
+export BMOB_EVENT_CHAT_LIVE_TEST=1
+export BMOB_EVENT_APP_KEY="YOUR_APP_KEY"
+export BMOB_EVENT_REST_KEY="YOUR_REST_API_KEY"
+swift test --filter BmobEventChatIntegrationTests
+```
+
+测试断言操作类型、表名、objectId 和新增记录字段；清理失败也会报告测试失败。请勿将真实密钥写入源码或提交到 Git。
 
 ## 文档
 

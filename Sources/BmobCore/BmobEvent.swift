@@ -188,7 +188,7 @@ public final class BmobEvent {
                                     let handshake = try BmobEventWire.handshake(result.get())
                                     let socketURL = try BmobEventWire.socketURL(domain, sid: handshake.sid)
                                     self.heartbeatTimeout = handshake.timeout + 7
-                                    transport.open(socketURL)
+                                    try transport.open(socketURL)
                                     self.armTimeout(30, token: token)
                                     self.receive(token)
                                 } catch { self.failed(error, token: token) }
@@ -352,7 +352,9 @@ public struct BmobEventMessage: @unchecked Sendable {
         action = json["action"] as? String
         className = json["tableName"] as? String ?? json["className"] as? String
         data = json["data"] as? [String: Any]
-        objectId = json["objectId"] as? String ?? data?["objectId"] as? String
+        // Table-wide notifications use an empty top-level objectId; the changed row is in data.
+        let eventObjectId = json["objectId"] as? String
+        objectId = eventObjectId.flatMap { $0.isEmpty ? nil : $0 } ?? data?["objectId"] as? String
     }
 }
 
@@ -408,6 +410,27 @@ enum BmobEventWire {
         return url
     }
 
+    /// Use the request overload and supply the Origin sent by the legacy SDK.
+    /// Socket.IO 0.9 can reject URLSession's default upgrade request with HTTP 403.
+    static func socketRequest(_ url: URL) throws -> URLRequest {
+        guard var origin = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = origin.scheme, ["ws", "wss"].contains(scheme),
+              let host = origin.host, !host.isEmpty,
+              origin.user == nil, origin.password == nil else {
+            throw BmobError.invalidParameter(reason: "WebSocket URL must use ws or wss")
+        }
+        origin.scheme = scheme == "wss" ? "https" : "http"
+        origin.path = ""
+        origin.query = nil
+        origin.fragment = nil
+        guard let originURL = origin.url else {
+            throw BmobError.invalidParameter(reason: "Invalid WebSocket Origin")
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.setValue(originURL.absoluteString, forHTTPHeaderField: "Origin")
+        return request
+    }
+
     static func subscription(appKey: String, action: BmobActionType, table: String,
                              objectId: String, cancel: Bool) throws -> String {
         let payload = try JSONSerialization.data(withJSONObject: ["appKey": appKey,
@@ -420,13 +443,13 @@ enum BmobEventWire {
 
 protocol BmobEventTransport: AnyObject {
     func handshake(_ url: URL, completion: @escaping (Result<String, Error>) -> Void)
-    func open(_ url: URL)
+    func open(_ url: URL) throws
     func receive(completion: @escaping (Result<String, Error>) -> Void)
     func send(_ text: String, completion: @escaping (Error?) -> Void)
     func close()
 }
 
-private final class BmobEventURLSessionTransport: BmobEventTransport {
+final class BmobEventURLSessionTransport: BmobEventTransport {
     private let session = URLSession(configuration: .ephemeral)
     private var handshakeTask: URLSessionDataTask?
     private var socket: URLSessionWebSocketTask?
@@ -443,8 +466,9 @@ private final class BmobEventURLSessionTransport: BmobEventTransport {
         }
         handshakeTask?.resume()
     }
-    func open(_ url: URL) {
-        socket = session.webSocketTask(with: url)
+    func open(_ url: URL) throws {
+        let request = try BmobEventWire.socketRequest(url)
+        socket = session.webSocketTask(with: request)
         socket?.resume()
     }
     func receive(completion: @escaping (Result<String, Error>) -> Void) {

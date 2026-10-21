@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-10-21
+
+### Fixed
+
+- WebSocket 显式使用 `ws` / `wss` 的 URLRequest，并补齐旧 SDK 同源的 `Origin` 请求头，修复实时服务返回 HTTP 403 导致的 `NSURLErrorDomain -1011`
+- 保持 HTTP → WS、HTTPS → WSS 的两步连接流程，先获取 SID，再通过 WebSocket 建连
+- 表更新通知的顶层 `objectId` 为空字符串时，正确回退读取 `data.objectId`
+
+### Added
+
+- HTTP/HTTPS 握手、WS/WSS、SID 传递、真实 URLSession 请求及空 objectId 回退的回归测试
+- 可选公开实时服务连接测试与 Chat 端到端测试，验证初始化、监听、新增记录、核对更新事件及删除测试记录；密钥从环境变量读取
+
 ## [1.0.7] - 2026-10-21
 
 ### Fixed

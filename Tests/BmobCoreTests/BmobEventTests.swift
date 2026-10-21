@@ -30,6 +30,84 @@ final class BmobEventTests: XCTestCase {
         XCTAssertThrowsError(try BmobEventWire.handshakeURL("file:///tmp/io"))
     }
 
+    func testWebSocketRequestPreservesSchemeAndLegacyOrigin() throws {
+        let sid = "7YJlHL0tJkPZj6xL"
+        for (domain, socketScheme, expectedOrigin) in [
+            ("http://io.codenow.cn:3010", "ws", "http://io.codenow.cn:3010"),
+            ("https://io.example.com:9443", "wss", "https://io.example.com:9443"),
+            ("ws://io.example.com:3010", "ws", "http://io.example.com:3010"),
+            ("wss://io.example.com", "wss", "https://io.example.com"),
+        ] {
+            let url = try BmobEventWire.socketURL(domain, sid: sid)
+            let request = try BmobEventWire.socketRequest(url)
+            XCTAssertEqual(request.url?.scheme, socketScheme)
+            XCTAssertEqual(request.url?.path, "/socket.io/1/websocket/" + sid)
+            XCTAssertNil(request.url?.query)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), expectedOrigin)
+            // Check the actual URLSession overload used in production, not only URLComponents.
+            let session = URLSession(configuration: .ephemeral)
+            let task = session.webSocketTask(with: request)
+            XCTAssertEqual(task.originalRequest?.url, url)
+            XCTAssertEqual(task.originalRequest?.value(forHTTPHeaderField: "Origin"), expectedOrigin)
+            task.cancel(with: .goingAway, reason: nil)
+            session.invalidateAndCancel()
+        }
+        XCTAssertThrowsError(try BmobEventWire.socketRequest(URL(string: "http://io.example.com/socket.io/1/websocket/sid")!))
+        XCTAssertThrowsError(try BmobEventWire.socketRequest(URL(string: "https://io.example.com/socket.io/1/websocket/sid")!))
+    }
+
+    func testHTTPHandshakeOpensMatchingWebSocketWithReturnedSID() async {
+        for (domain, httpScheme, socketScheme) in [
+            ("http://io.codenow.cn:3010", "http", "ws"),
+            ("https://io.example.com:9443", "https", "wss"),
+        ] {
+            let transport = MockTransport()
+            transport.handshakeResult = .success("7YJlHL0tJkPZj6xL:60:90:websocket")
+            let event = BmobEvent(configuration: { (domain, "test-app") }, makeTransport: { transport })
+            await open(event, transport)
+            XCTAssertEqual(transport.handshakeURL?.scheme, httpScheme)
+            XCTAssertEqual(transport.handshakeURL?.host, transport.socketURL?.host)
+            XCTAssertEqual(transport.handshakeURL?.port, transport.socketURL?.port)
+            XCTAssertEqual(URLComponents(url: transport.handshakeURL!, resolvingAgainstBaseURL: false)?.path, "/socket.io/1/")
+            XCTAssertEqual(transport.socketURL?.scheme, socketScheme)
+            XCTAssertEqual(transport.socketURL?.path, "/socket.io/1/websocket/7YJlHL0tJkPZj6xL")
+            event.stop()
+        }
+    }
+
+    // Explicit opt-in: contacts the public Socket.IO endpoint, sends no subscription or business data.
+    func testLiveSocketIOConnection() async throws {
+        guard ProcessInfo.processInfo.environment["BMOB_EVENT_LIVE_TEST"] == "1" else {
+            throw XCTSkip("Set BMOB_EVENT_LIVE_TEST=1 to test the public Socket.IO connection")
+        }
+        let event = BmobEvent(configuration: { ("http://io.codenow.cn:3010", "unused-no-subscriptions") },
+                              makeTransport: { BmobEventURLSessionTransport() })
+        defer { event.stop() }
+        event.autoReconnect = false
+        let spy = DelegateSpy()
+        event.delegate = spy
+        let connected = expectation(description: "Received Socket.IO connection packet from live server")
+        spy.connected = { connected.fulfill() }
+        spy.error = { error in XCTFail("Live connection failed: \(error)"); connected.fulfill() }
+        event.connect()
+        await fulfillment(of: [connected], timeout: 20)
+        XCTAssertTrue(event.isConnected)
+    }
+
+    func testTableUpdateUsesRowObjectIdWhenTopLevelIdIsEmpty() {
+        let message = BmobEventMessage(json: [
+            "action": "updateTable", "tableName": "Chat", "objectId": "",
+            "data": ["objectId": "new-chat-row", "content": "test"],
+        ])
+        XCTAssertEqual(message.objectId, "new-chat-row")
+        XCTAssertEqual(message.rawValue["objectId"] as? String, "")
+        let row = BmobEventMessage(json: [
+            "action": "updateRow", "objectId": "top-level-row", "data": ["objectId": "data-row"],
+        ])
+        XCTAssertEqual(row.objectId, "top-level-row")
+        XCTAssertNil(BmobEventMessage(json: ["objectId": ""]).objectId)
+    }
+
     func testCustomIODomainPriorityValidationAndReset() async throws {
         let manager = BmobManager.shared
         await manager.reset()
@@ -299,12 +377,14 @@ private final class MockTransport: BmobEventTransport {
     var handshakeResult: Result<String, Error> = .success("abc:15:60:websocket")
     var delayHandshake = false
     var handshakeCount = 0
+    var handshakeURL: URL?
     var socketURL: URL?
     var sent: [String] = []
     var closed = false
     var sendError: Error?
 
     func handshake(_ url: URL, completion: @escaping (Result<String, Error>) -> Void) {
+        handshakeURL = url
         handshakeCount += 1
         handshakeCompletion = completion
         handshaking?()
